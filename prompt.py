@@ -20,7 +20,27 @@ class ModelConfig:
             "type": ModelType.DEEPSEEK, "name": "DeepSeek Coder 6.7B",
             "default_temp": "0.1", "default_top_k": "40", "default_top_p": "0.95",
             "default_max_tokens": "500", "supports_harmony": False, "supports_simple": True
-        }
+        },
+        "tongyi-DeepResearch-30B-A3B-Q4_K_M.gguf": {
+            "type": ModelType.DEEPSEEK,
+            "name": "DeepResearch 30B A3B",
+            "default_temp": "0.1",
+            "default_top_k": "40",
+            "default_top_p": "0.95",
+            "default_max_tokens": "2048",
+            "supports_harmony": False,
+            "supports_simple": True
+        },
+        "Qwen3-30B-A3B-Q4_K_M.gguf": {
+            "type": ModelType.QWEN,
+            "name": "Qwen3 30B A3B (Q4_K_M)",
+            "default_temp": "0.7",
+            "default_top_k": "40",
+            "default_top_p": "0.9",
+            "default_max_tokens": "2048",
+            "supports_harmony": False,
+            "supports_simple": True
+        },
     }
 
 class PromptFormatter:
@@ -44,6 +64,22 @@ Reasoning: {reasoning}
 ### Instruction:
 {instruction}
 ### Response:""" if use_template else instruction
+    @staticmethod
+    def format_qwen(instruction, system_prompt=""):
+        """Format for Qwen3 models using ChatML format"""
+        if system_prompt:
+            prompt = f"""<|im_start|>system
+{system_prompt}<|im_end|>
+<|im_start|>user
+{instruction}<|im_end|>
+<|im_start|>assistant
+"""
+        else:
+            prompt = f"""<|im_start|>user
+{instruction}<|im_end|>
+<|im_start|>assistant
+"""
+        return prompt
 
 class LLMGui:
     def __init__(self, root):
@@ -266,33 +302,63 @@ class LLMGui:
             except Exception as e: messagebox.showerror("Error", f"Failed to save: {e}")
     
     def load_example(self):
+        """Load an example prompt based on model type"""
         model = self.selected_model.get()
-        if model not in ModelConfig.CONFIGS: return
-        cfg = ModelConfig.CONFIGS[model]
-        self.prompt_text.delete(1.0, tk.END)
-        self.system_prompt.delete(1.0, tk.END)
-        if cfg["type"] == ModelType.DEEPSEEK:
-            self.prompt_text.insert(1.0, "Write a Python function to calculate the Fibonacci sequence recursively with memoization.")
-            self.system_prompt.insert(1.0, "You are an expert Python programmer. Write clean, efficient, and well-documented code.")
-        else:
-            self.prompt_text.insert(1.0, "Explain the concept of quantum entanglement in simple terms.")
-            self.system_prompt.insert(1.0, "You are a helpful AI assistant that explains complex topics clearly.")
+        if model in ModelConfig.CONFIGS:
+            config = ModelConfig.CONFIGS[model]
+            if config["type"] == ModelType.DEEPSEEK:
+                self.prompt_text.delete(1.0, tk.END)
+                self.prompt_text.insert(1.0, "Write a Python function to calculate the Fibonacci sequence recursively with memoization.")
+                self.system_prompt.delete(1.0, tk.END)
+                self.system_prompt.insert(1.0, "You are an expert Python programmer. Write clean, efficient, and well-documented code.")
+            elif config["type"] == ModelType.QWEN:
+                self.prompt_text.delete(1.0, tk.END)
+                self.prompt_text.insert(1.0, "Explain the advantages of using GGUF format for large language models. Include technical details about quantization.")
+                self.system_prompt.delete(1.0, tk.END)
+                self.system_prompt.insert(1.0, "You are Qwen, a helpful AI assistant created by Alibaba Cloud. Provide detailed and accurate information.")
+            else:
+                self.prompt_text.delete(1.0, tk.END)
+                self.prompt_text.insert(1.0, "Explain the concept of quantum entanglement in simple terms.")
+                self.system_prompt.delete(1.0, tk.END)
+                self.system_prompt.insert(1.0, "You are a helpful AI assistant that explains complex topics clearly.")
     
     def format_prompt(self, instruction, system_prompt=""):
+        """Format the prompt based on selected model and format type"""
         model = self.selected_model.get()
-        if model not in ModelConfig.CONFIGS: return instruction
+        format_type = self.prompt_format.get()
         
-        cfg = ModelConfig.CONFIGS[model]
-        mt = cfg["type"]
-        ft = self.prompt_format.get()
+        if model not in ModelConfig.CONFIGS:
+            return instruction
         
-        if ft == "auto":
-            if mt == ModelType.DEEPSEEK: return PromptFormatter.format_deepseek(instruction, True)
-            elif mt == ModelType.GPT_OSS:
-                return PromptFormatter.format_gpt_oss_simple(instruction) if "uncensored" in model.lower() \
-                       else PromptFormatter.format_gpt_oss_harmony(instruction, self.reasoning_level.get(), system_prompt)
-        elif ft == "harmony": return PromptFormatter.format_gpt_oss_harmony(instruction, self.reasoning_level.get(), system_prompt)
-        elif ft == "simple": return PromptFormatter.format_deepseek(instruction, False) if mt == ModelType.DEEPSEEK else PromptFormatter.format_gpt_oss_simple(instruction)
+        config = ModelConfig.CONFIGS[model]
+        model_type = config["type"]
+        
+        if format_type == "auto":
+            # Auto-detect best format
+            if model_type == ModelType.DEEPSEEK:
+                return PromptFormatter.format_deepseek(instruction, True)
+            elif model_type == ModelType.QWEN:
+                return PromptFormatter.format_qwen(instruction, system_prompt)
+            elif model_type == ModelType.GPT_OSS:
+                # Use simple format for uncensored variants
+                if "uncensored" in model.lower():
+                    return PromptFormatter.format_gpt_oss_simple(instruction)
+                else:
+                    return PromptFormatter.format_gpt_oss_harmony(
+                        instruction, self.reasoning_level.get(), system_prompt
+                    )
+        elif format_type == "harmony":
+            return PromptFormatter.format_gpt_oss_harmony(
+                instruction, self.reasoning_level.get(), system_prompt
+            )
+        elif format_type == "simple":
+            if model_type == ModelType.DEEPSEEK:
+                return PromptFormatter.format_deepseek(instruction, False)
+            elif model_type == ModelType.QWEN:
+                return instruction  # Raw prompt without template
+            else:
+                return PromptFormatter.format_gpt_oss_simple(instruction)
+        
         return instruction
     
     def generate(self):
