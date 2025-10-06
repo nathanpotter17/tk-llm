@@ -1,13 +1,12 @@
 # tk-llm
 
-A Python GUI launcher for local LLM models using llama.cpp. Features a user-friendly tkinter interface for running GGUF models like GPT-OSS 20B and DeepSeek Coder with customizable parameters.
+A Python GUI launcher for local LLM models using llama.cpp.
 
 ## Features
-- Multi-model support with automatic format detection
+- Model configurations and formatted input
 - Real-time output streaming in GUI or terminal mode
-- Adjustable generation parameters (temperature, top-k, top-p)
-- System/user prompt management
-- Configuration save/load functionality
+- Adjustable generation parameters (temperature, top-k, top-p, ngl, max tokens)
+- Output management functionality
 - Support for Harmony Response Format and simple prompting
 
 ## Requirements
@@ -20,4 +19,4 @@ A Python GUI launcher for local LLM models using llama.cpp. Features a user-frie
 python prompt.py
 ```
 
-Place model files in the same directory as the script.
+Place model files in the same directory as the script, under llama-**/.
