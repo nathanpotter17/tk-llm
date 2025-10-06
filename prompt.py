@@ -8,26 +8,31 @@ from enum import Enum
 class ModelType(Enum):
     GPT_OSS = "gpt-oss"
     DEEPSEEK = "deepseek"
+    QWEN = "qwen"
 
 class ModelConfig:
     CONFIGS = {
         "OpenAI-20B-NEO-CODE2-Plus-Uncensored-IQ4_NL.gguf": {
             "type": ModelType.GPT_OSS, "name": "OpenAI GPT-OSS 20B (NEO-CODE2)",
             "default_temp": "0.7", "default_top_k": "40", "default_top_p": "0.95",
-            "default_max_tokens": "500", "supports_harmony": True, "supports_simple": True
+            "default_max_tokens": "500", "default_ngl": "20", "default_context": "4096",
+            "supports_harmony": True, "supports_simple": True
         },
         "deepseek-coder-6.7b-instruct.Q3_K_M.gguf": {
             "type": ModelType.DEEPSEEK, "name": "DeepSeek Coder 6.7B",
             "default_temp": "0.1", "default_top_k": "40", "default_top_p": "0.95",
-            "default_max_tokens": "500", "supports_harmony": False, "supports_simple": True
+            "default_max_tokens": "500", "default_ngl": "99", "default_context": "4096",
+            "supports_harmony": False, "supports_simple": True
         },
-        "tongyi-DeepResearch-30B-A3B-Q4_K_M.gguf": {
+        "tongyi-deepresearch-30b-a3b-q4_k_m.gguf": {
             "type": ModelType.DEEPSEEK,
             "name": "DeepResearch 30B A3B",
             "default_temp": "0.1",
             "default_top_k": "40",
             "default_top_p": "0.95",
             "default_max_tokens": "2048",
+            "default_ngl": "15",
+            "default_context": "2048",
             "supports_harmony": False,
             "supports_simple": True
         },
@@ -38,6 +43,8 @@ class ModelConfig:
             "default_top_k": "40",
             "default_top_p": "0.9",
             "default_max_tokens": "2048",
+            "default_ngl": "15",
+            "default_context": "2048",
             "supports_harmony": False,
             "supports_simple": True
         },
@@ -181,15 +188,25 @@ class LLMGui:
         pf = ttk.LabelFrame(main, text="Generation Parameters", padding="10")
         pf.pack(fill='x', pady=5)
         self.params = {}
-        for i, (l, k, d) in enumerate([("Max Tokens:", "max_tokens", "500"), ("Temperature:", "temperature", "0.7"),
-                                        ("Top-K:", "top_k", "40"), ("Top-P:", "top_p", "0.95"),
-                                        ("Threads:", "threads", "8"), ("Context Size:", "context", "4096")]):
+
+        # Updated parameter list with ngl and n
+        params_list = [
+            ("Max Tokens (-n):", "n", "500"),
+            ("GPU Layers (-ngl):", "ngl", "0"),
+            ("Temperature:", "temperature", "0.7"),
+            ("Top-K:", "top_k", "40"),
+            ("Top-P:", "top_p", "0.95"),
+            ("Threads:", "threads", "8"),
+            ("Context Size:", "context", "4096")
+        ]
+
+        for i, (label, key, default) in enumerate(params_list):
             r, c = i // 3, (i % 3) * 2
-            ttk.Label(pf, text=l).grid(row=r, column=c, sticky=tk.W, padx=5, pady=2)
+            ttk.Label(pf, text=label).grid(row=r, column=c, sticky=tk.W, padx=5, pady=2)
             e = ttk.Entry(pf, width=10)
-            e.insert(0, d)
+            e.insert(0, default)
             e.grid(row=r, column=c+1, padx=5, pady=2)
-            self.params[k] = e
+            self.params[key] = e
         
         # Prompt Input
         pif = ttk.LabelFrame(main, text="Prompt Input", padding="10")
@@ -264,10 +281,25 @@ class LLMGui:
         self.format_combo['values'] = formats
         self.prompt_format.set("auto")
         
-        for p in ["max_tokens", "temperature", "top_k", "top_p"]:
-            self.params[p].delete(0, tk.END)
-            self.params[p].insert(0, cfg[f"default_{p.replace('_tokens', '_tokens').replace('temperature', 'temp')}"])
-    
+        # Update all parameters with model-specific defaults
+        self.params["temperature"].delete(0, tk.END)
+        self.params["temperature"].insert(0, cfg["default_temp"])
+        
+        self.params["top_k"].delete(0, tk.END)
+        self.params["top_k"].insert(0, cfg["default_top_k"])
+        
+        self.params["top_p"].delete(0, tk.END)
+        self.params["top_p"].insert(0, cfg["default_top_p"])
+        
+        self.params["n"].delete(0, tk.END)
+        self.params["n"].insert(0, cfg["default_max_tokens"])
+        
+        self.params["ngl"].delete(0, tk.END)
+        self.params["ngl"].insert(0, cfg["default_ngl"])
+        
+        self.params["context"].delete(0, tk.END)
+        self.params["context"].insert(0, cfg["default_context"])
+
     def load_prompt_from_file(self):
         fp = filedialog.askopenfilename(title="Select prompt file", filetypes=[("Text files", "*.txt"), ("Markdown files", "*.md"), ("All files", "*.*")])
         if fp:
@@ -379,10 +411,20 @@ class LLMGui:
         model_path = self.selected_model.get()
         
         cmd = [self.llama_cli, '-m', model_path, '-p', formatted_prompt,
-               '-n', self.params["max_tokens"].get(), '-t', self.params["threads"].get(),
+               '-t', self.params["threads"].get(),
                '-c', self.params["context"].get(), '--temp', self.params["temperature"].get(),
                '--top-k', self.params["top_k"].get(), '--top-p', self.params["top_p"].get(),
                '--repeat-penalty', '1.1']
+            
+        # Add -n if specified
+        n_value = self.params["n"].get().strip()
+        if n_value and n_value != "0":
+            cmd.extend(['-n', n_value])
+        
+        # Add -ngl if specified (for GPU offloading)
+        ngl_value = self.params["ngl"].get().strip()
+        if ngl_value and ngl_value != "0":
+            cmd.extend(['-ngl', ngl_value])
         
         self.run_in_terminal(cmd, formatted_prompt, model_path) if self.output_mode.get() == "terminal" \
         else self.run_in_gui(cmd, formatted_prompt, model_path)
